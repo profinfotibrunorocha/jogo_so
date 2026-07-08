@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<title>Detetive da Prevenção</title>
+<style>
+  :root{--azul:#0b3d78;--azul2:#0e4c99;--laranja:#f26522;--bg:#f2f4f8;}
+  *{box-sizing:border-box;font-family:'Segoe UI',Arial,sans-serif;}
+  body{margin:0;background:var(--bg);color:#1c2b3a;}
+  header{background:var(--azul);color:#fff;padding:18px 24px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;}
+  header h1{margin:0;font-size:1.4rem;}
+  header p{margin:2px 0 0;font-size:.85rem;opacity:.85}
+  .hud{display:flex;gap:18px;font-weight:bold;}
+  .hud span{background:rgba(255,255,255,.15);padding:6px 14px;border-radius:20px;}
+  #timer.low{background:var(--laranja);}
+  main{max-width:900px;margin:20px auto;padding:0 16px;}
+  .instructions{background:#fff;border-left:6px solid var(--laranja);padding:14px 18px;border-radius:8px;margin-bottom:16px;font-size:.95rem;}
+  .room{position:relative;background:#dbe6f3;border:3px solid var(--azul2);border-radius:14px;height:460px;overflow:hidden;
+        background-image:
+          linear-gradient(#c9d8ea 2px,transparent 2px),
+          linear-gradient(90deg,#c9d8ea 2px,transparent 2px);
+        background-size:40px 40px;}
+  .obj{position:absolute;font-size:2.6rem;cursor:pointer;user-select:none;transition:transform .15s;filter:drop-shadow(0 2px 2px rgba(0,0,0,.25));}
+  .obj:hover{transform:scale(1.15);}
+  .obj.found{opacity:.25;pointer-events:none;filter:grayscale(1);}
+  .floatmsg{position:absolute;font-weight:bold;font-size:1rem;pointer-events:none;animation:up 1s forwards;}
+  @keyframes up{from{opacity:1;transform:translateY(0)}to{opacity:0;transform:translateY(-50px)}}
+  .found-good{color:#1c7c3c;}
+  .found-bad{color:#c0392b;}
+  #log{background:#fff;border-radius:8px;padding:12px 18px;margin-top:16px;min-height:40px;font-size:.9rem;}
+  #log b{color:var(--azul2);}
+  .badge{display:inline-block;background:#eef3fb;border-radius:20px;padding:4px 10px;margin:3px 4px 0 0;font-size:.8rem;border:1px solid #c9d8ea;}
+  #overlay{position:fixed;inset:0;background:rgba(11,61,120,.92);color:#fff;display:none;align-items:center;justify-content:center;flex-direction:column;text-align:center;padding:20px;}
+  #overlay h2{font-size:2.2rem;margin-bottom:4px;}
+  button{background:var(--laranja);color:#fff;border:none;padding:12px 26px;border-radius:30px;font-size:1rem;cursor:pointer;margin-top:16px;font-weight:bold;}
+  button:hover{filter:brightness(1.08);}
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <h1>🕵️ Detetive da Prevenção</h1>
+    <p>Encontre os perigos escondidos no ambiente antes que o tempo acabe!</p>
+  </div>
+  <div class="hud">
+    <span>⭐ Pontos: <span id="score">0</span></span>
+    <span id="timer">⏱ 60s</span>
+  </div>
+</header>
+<main>
+  <div class="instructions">
+    Clique nos itens que representam <b>riscos de acidente ou de saúde ocupacional</b> nesta sala.
+    Cuidado: alguns itens são seguros (decoys) — clicar neles tira pontos! Encontre os <b>8 perigos</b> escondidos.
+  </div>
+  <div class="room" id="room"></div>
+  <div id="log"><b>Registro do detetive:</b> nenhum item encontrado ainda.</div>
+</main>
+
+<div id="overlay">
+  <h2 id="overTitle">Tempo esgotado!</h2>
+  <p id="overText"></p>
+  <button onclick="startGame()">Jogar novamente</button>
+</div>
+
+<script>
+const room = document.getElementById('room');
+const scoreEl = document.getElementById('score');
+const timerEl = document.getElementById('timer');
+const logEl = document.getElementById('log');
+const overlay = document.getElementById('overlay');
+
+// itens: hazard = true -> perigo | false -> seguro (decoy)
+const items = [
+  {emoji:'⚡', hazard:true,  desc:'Fio elétrico desencapado exposto perto da bancada'},
+  {emoji:'🔌', hazard:true,  desc:'Tomada sobrecarregada com muitos plugues'},
+  {emoji:'🪑', hazard:true,  desc:'Cadeira sem apoio lombar / regulagem quebrada'},
+  {emoji:'🧴', hazard:true,  desc:'Produto químico (solvente) sem tampa perto do PC'},
+  {emoji:'🪜', hazard:true,  desc:'Escada aberta de forma instável para puxar cabos'},
+  {emoji:'🍔', hazard:true,  desc:'Alimento sobre o teclado (risco biológico)'},
+  {emoji:'📦', hazard:true,  desc:'Caixas empilhadas bloqueando a saída de emergência'},
+  {emoji:'🕸️', hazard:true,  desc:'Cabos de rede emaranhados no chão (risco de queda)'},
+  {emoji:'💻', hazard:false, desc:'Computador em uso normal'},
+  {emoji:'🖱️', hazard:false, desc:'Mouse organizado sobre a mesa'},
+  {emoji:'🧯', hazard:false, desc:'Extintor de CO2 disponível e sinalizado'},
+  {emoji:'🪴', hazard:false, desc:'Planta decorativa'},
+  {emoji:'📚', hazard:false, desc:'Livros organizados na estante'},
+  {emoji:'🖼️', hazard:false, desc:'Quadro na parede'},
+  {emoji:'🧑‍💻', hazard:false, desc:'Colaborador trabalhando com postura correta'}
+];
+
+let score = 0, timeLeft = 60, timerId = null, foundCount = 0, totalHazards = 0;
+
+function rand(min,max){return Math.random()*(max-min)+min;}
+
+function startGame(){
+  overlay.style.display='none';
+  score = 0; timeLeft = 60; foundCount = 0;
+  scoreEl.textContent = score;
+  timerEl.textContent = '⏱ 60s';
+  timerEl.classList.remove('low');
+  logEl.innerHTML = '<b>Registro do detetive:</b> nenhum item encontrado ainda.';
+  room.innerHTML = '';
+
+  const positions = [];
+  totalHazards = items.filter(i=>i.hazard).length;
+
+  items.forEach((item,idx)=>{
+    const el = document.createElement('div');
+    el.className='obj';
+    el.textContent = item.emoji;
+    let top, left, tries=0, overlap;
+    do{
+      top = rand(5,85); left = rand(2,88); overlap=false; tries++;
+      for(const p of positions){ if(Math.abs(p.top-top)<12 && Math.abs(p.left-left)<12){overlap=true;break;} }
+    } while(overlap && tries<50);
+    positions.push({top,left});
+    el.style.top = top+'%'; el.style.left = left+'%';
+    el.onclick = ()=>handleClick(el,item);
+    room.appendChild(el);
+  });
+
+  clearInterval(timerId);
+  timerId = setInterval(()=>{
+    timeLeft--;
+    timerEl.textContent = '⏱ '+timeLeft+'s';
+    if(timeLeft<=15) timerEl.classList.add('low');
+    if(timeLeft<=0){ clearInterval(timerId); endGame(false); }
+  },1000);
+}
+
+function handleClick(el,item){
+  if(el.classList.contains('found')) return;
+  el.classList.add('found');
+  const msg = document.createElement('div');
+  msg.className='floatmsg '+(item.hazard?'found-good':'found-bad');
+  msg.style.top = el.style.top; msg.style.left = el.style.left;
+  if(item.hazard){
+    score += 10; foundCount++;
+    msg.textContent='+10';
+    logEl.innerHTML += `<div class="badge">✅ ${item.desc}</div>`;
+  } else {
+    score = Math.max(0,score-5);
+    msg.textContent='-5';
+    logEl.innerHTML += `<div class="badge">❌ Item seguro clicado por engano</div>`;
+  }
+  room.appendChild(msg);
+  setTimeout(()=>msg.remove(),1000);
+  scoreEl.textContent = score;
+  if(foundCount>=totalHazards){ clearInterval(timerId); endGame(true); }
+}
+
+function endGame(win){
+  overlay.style.display='flex';
+  document.getElementById('overTitle').textContent = win ? '🎉 Todos os perigos encontrados!' : '⏱ Tempo esgotado!';
+  document.getElementById('overText').textContent = `Você encontrou ${foundCount} de ${totalHazards} perigos e fez ${score} pontos.`;
+}
+
+startGame();
+</script>
+</body>
+</html>

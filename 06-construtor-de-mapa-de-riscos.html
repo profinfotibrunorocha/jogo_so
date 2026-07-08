@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<title>Construtor de Mapa de Riscos</title>
+<style>
+  :root{--azul:#0b3d78;--laranja:#f26522;--bg:#f2f4f8;}
+  *{box-sizing:border-box;font-family:'Segoe UI',Arial,sans-serif;}
+  body{margin:0;background:var(--bg);color:#1c2b3a;}
+  header{background:var(--azul);color:#fff;padding:18px 24px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;}
+  header h1{margin:0;font-size:1.4rem;}
+  .hud span{background:rgba(255,255,255,.15);padding:6px 14px;border-radius:20px;font-weight:bold;margin-left:10px;}
+  main{max-width:960px;margin:20px auto;padding:0 16px;}
+  .instructions{background:#fff;border-left:6px solid var(--laranja);padding:14px 18px;border-radius:8px;margin-bottom:16px;font-size:.95rem;}
+  .layout{display:flex;gap:20px;flex-wrap:wrap;}
+  .palette{flex:1 1 220px;display:flex;flex-direction:column;gap:8px;}
+  .chip{padding:10px 12px;border-radius:10px;color:#fff;font-weight:bold;font-size:.85rem;cursor:pointer;box-shadow:0 2px 5px rgba(0,0,0,.15);border:3px solid transparent;}
+  .chip.selected{border-color:#222;transform:scale(1.03);}
+  .chip.used{opacity:.25;pointer-events:none;}
+  .fisico{background:#2e9e4a;} .quimico{background:#d64545;} .biologico{background:#8a5a2b;}
+  .ergonomico{background:#e0a800;color:#3a2c00;} .acidente{background:#2864c9;}
+  .plan{flex:2 1 460px;position:relative;background:#e9eef7;border:3px solid var(--azul);border-radius:14px;height:420px;overflow:hidden;}
+  .zone{position:absolute;border:2px dashed #9db3ce;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:.75rem;color:#5b6b82;text-align:center;padding:4px;}
+  .marker{position:absolute;border-radius:50%;transform:translate(-50%,-50%);border:2px solid #fff;box-shadow:0 2px 4px rgba(0,0,0,.3);}
+  #log{background:#fff;border-radius:8px;padding:12px 18px;margin-top:16px;font-size:.9rem;}
+  .badge{display:inline-block;border-radius:20px;padding:4px 10px;margin:3px 4px 0 0;font-size:.8rem;color:#fff;}
+  .ok{background:#1c7c3c;} .bad{background:#c0392b;}
+  #overlay{position:fixed;inset:0;background:rgba(11,61,120,.92);color:#fff;display:none;align-items:center;justify-content:center;flex-direction:column;text-align:center;padding:20px;}
+  button{background:var(--laranja);color:#fff;border:none;padding:12px 26px;border-radius:30px;font-size:1rem;cursor:pointer;margin-top:16px;font-weight:bold;}
+</style>
+</head>
+<body>
+<header>
+  <h1>🗺️ Construtor de Mapa de Riscos</h1>
+  <div class="hud">
+    <span>⭐ Pontos: <span id="score">0</span></span>
+    <span id="timerLabel">⏱ 75s</span>
+  </div>
+</header>
+<main>
+  <div class="instructions">
+    Selecione um risco na lista à esquerda e clique na <b>estação correta</b> da planta do laboratório para posicionar o círculo.
+    Preste atenção à cor (tipo de risco) e ao tamanho (pequeno = controlado, grande = grave). Posicione os <b>8 riscos</b>!
+  </div>
+  <div class="layout">
+    <div class="palette" id="palette"></div>
+    <div class="plan" id="plan">
+      <div class="zone" style="left:5%;top:5%;width:34%;height:40%;">Rack de Servidores</div>
+      <div class="zone" style="left:42%;top:5%;width:53%;height:26%;">Bancada de Solda/Montagem</div>
+      <div class="zone" style="left:5%;top:50%;width:40%;height:44%;">Estações de Trabalho (PCs)</div>
+      <div class="zone" style="left:50%;top:36%;width:45%;height:58%;">Almoxarifado / Cabeamento</div>
+    </div>
+  </div>
+  <div id="log"><b>Registro:</b> nenhum risco posicionado ainda.</div>
+</main>
+
+<div id="overlay">
+  <h2 id="overTitle"></h2>
+  <p id="overText"></p>
+  <button onclick="startGame()">Jogar novamente</button>
+</div>
+
+<script>
+// posições corretas em % relativo à .plan (x,y) e raio tolerância
+const risks = [
+  {id:'r1', cat:'fisico',    size:22, label:'🟢 Calor do rack de servidores', target:{x:20,y:22}},
+  {id:'r2', cat:'acidente',  size:30, label:'🔵 Fios expostos no rack', target:{x:20,y:35}},
+  {id:'r3', cat:'quimico',   size:20, label:'🔴 Solvente na bancada de solda', target:{x:65,y:12}},
+  {id:'r4', cat:'fisico',    size:16, label:'🟢 Calor do ferro de solda', target:{x:65,y:22}},
+  {id:'r5', cat:'biologico', size:18, label:'🟤 Mouse/teclado sem higiene', target:{x:22,y:65}},
+  {id:'r6', cat:'ergonomico',size:24, label:'🟡 Postura incorreta nas estações', target:{x:22,y:82}},
+  {id:'r7', cat:'acidente',  size:28, label:'🔵 Cabos soltos no almoxarifado', target:{x:72,y:60}},
+  {id:'r8', cat:'ergonomico',size:14, label:'🟡 Iluminação ruim no depósito', target:{x:72,y:85}}
+];
+const catColor={fisico:'#2e9e4a',quimico:'#d64545',biologico:'#8a5a2b',ergonomico:'#e0a800',acidente:'#2864c9'};
+
+let selected=null, score=0, placedCount=0, timeLeft=75, timerId=null;
+
+function shuffle(a){return a.map(v=>[Math.random(),v]).sort((x,y)=>x[0]-y[0]).map(v=>v[1]);}
+
+function startGame(){
+  document.getElementById('overlay').style.display='none';
+  score=0; placedCount=0; timeLeft=75; selected=null;
+  document.getElementById('score').textContent=score;
+  document.getElementById('timerLabel').textContent='⏱ 75s';
+  document.getElementById('log').innerHTML='<b>Registro:</b> nenhum risco posicionado ainda.';
+  document.querySelectorAll('.marker').forEach(m=>m.remove());
+
+  const palette=document.getElementById('palette');
+  palette.innerHTML='';
+  shuffle(risks).forEach(r=>{
+    const chip=document.createElement('div');
+    chip.className='chip '+r.cat;
+    chip.textContent=r.label;
+    chip.dataset.id=r.id;
+    chip.onclick=()=>{
+      if(chip.classList.contains('used')) return;
+      document.querySelectorAll('.chip').forEach(c=>c.classList.remove('selected'));
+      chip.classList.add('selected');
+      selected=r;
+    };
+    palette.appendChild(chip);
+  });
+
+  clearInterval(timerId);
+  timerId=setInterval(()=>{
+    timeLeft--;
+    document.getElementById('timerLabel').textContent='⏱ '+timeLeft+'s';
+    if(timeLeft<=0){clearInterval(timerId); endGame(false);}
+  },1000);
+}
+
+const plan=document.getElementById('plan');
+plan.addEventListener('click',(e)=>{
+  if(!selected) return;
+  const rect=plan.getBoundingClientRect();
+  const x=((e.clientX-rect.left)/rect.width)*100;
+  const y=((e.clientY-rect.top)/rect.height)*100;
+  const dx=x-selected.target.x, dy=y-selected.target.y;
+  const dist=Math.sqrt(dx*dx+dy*dy);
+  const log=document.getElementById('log');
+
+  const marker=document.createElement('div');
+  marker.className='marker';
+  marker.style.width=selected.size+'px';
+  marker.style.height=selected.size+'px';
+  marker.style.background=catColor[selected.cat];
+  marker.style.left=x+'%'; marker.style.top=y+'%';
+  plan.appendChild(marker);
+
+  if(dist<16){
+    score+=15; placedCount++;
+    log.innerHTML+=`<span class="badge ok">✔ ${selected.label} posicionado corretamente</span>`;
+    document.querySelector(`.chip[data-id="${selected.id}"]`).classList.add('used');
+  } else {
+    score=Math.max(0,score-5);
+    log.innerHTML+=`<span class="badge bad">✘ Local incorreto para: ${selected.label}</span>`;
+    setTimeout(()=>marker.remove(),700);
+  }
+  document.getElementById('score').textContent=score;
+  document.querySelectorAll('.chip').forEach(c=>c.classList.remove('selected'));
+  selected=null;
+
+  if(placedCount>=risks.length){clearInterval(timerId); endGame(true);}
+});
+
+function endGame(win){
+  document.getElementById('overlay').style.display='flex';
+  document.getElementById('overTitle').textContent= win?'🎉 Mapa de Riscos concluído!':'⏱ Tempo esgotado!';
+  document.getElementById('overText').textContent=`Você posicionou corretamente ${placedCount} de ${risks.length} riscos e fez ${score} pontos.`;
+}
+startGame();
+</script>
+</body>
+</html>

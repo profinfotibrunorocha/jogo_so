@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<title>Inspetor CIPA</title>
+<style>
+  :root{--azul:#0b3d78;--laranja:#f26522;--bg:#f2f4f8;}
+  *{box-sizing:border-box;font-family:'Segoe UI',Arial,sans-serif;}
+  body{margin:0;background:var(--bg);color:#1c2b3a;}
+  header{background:var(--azul);color:#fff;padding:18px 24px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;}
+  header h1{margin:0;font-size:1.4rem;}
+  .hud span{background:rgba(255,255,255,.15);padding:6px 14px;border-radius:20px;font-weight:bold;margin-left:10px;}
+  main{max-width:900px;margin:20px auto;padding:0 16px;}
+  .instructions{background:#fff;border-left:6px solid var(--laranja);padding:14px 18px;border-radius:8px;margin-bottom:16px;font-size:.95rem;}
+  .lab{position:relative;background:repeating-linear-gradient(45deg,#e7edf6,#e7edf6 20px,#dde6f2 20px,#dde6f2 40px);
+       border:3px dashed var(--azul);border-radius:14px;height:440px;}
+  .rack{position:absolute;left:10px;top:10px;width:90px;height:420px;background:#2b3648;border-radius:8px;
+       background-image:repeating-linear-gradient(#3c4a63 0 6px,#2b3648 6px 14px);border:3px solid #1c2536;}
+  .desk{position:absolute;right:20px;bottom:10px;width:260px;height:90px;background:#a97449;border-radius:6px;border:3px solid #7a5230;}
+  .obj{position:absolute;font-size:2.4rem;cursor:pointer;user-select:none;transition:transform .15s;filter:drop-shadow(0 2px 2px rgba(0,0,0,.25));}
+  .obj:hover{transform:scale(1.15);}
+  .obj.found{opacity:.2;pointer-events:none;filter:grayscale(1);}
+  .floatmsg{position:absolute;font-weight:bold;font-size:1rem;pointer-events:none;animation:up 1s forwards;}
+  @keyframes up{from{opacity:1;transform:translateY(0)}to{opacity:0;transform:translateY(-50px)}}
+  .found-good{color:#1c7c3c;} .found-bad{color:#c0392b;}
+  #log{background:#fff;border-radius:8px;padding:12px 18px;margin-top:16px;font-size:.9rem;}
+  .badge{display:inline-block;background:#eef3fb;border-radius:20px;padding:4px 10px;margin:3px 4px 0 0;font-size:.8rem;border:1px solid #c9d8ea;}
+  #overlay{position:fixed;inset:0;background:rgba(11,61,120,.92);color:#fff;display:none;align-items:center;justify-content:center;flex-direction:column;text-align:center;padding:20px;}
+  button{background:var(--laranja);color:#fff;border:none;padding:12px 26px;border-radius:30px;font-size:1rem;cursor:pointer;margin-top:16px;font-weight:bold;}
+</style>
+</head>
+<body>
+<header>
+  <h1>👷 Inspetor CIPA</h1>
+  <div class="hud">
+    <span>⭐ Pontos: <span id="score">0</span></span>
+    <span id="timer">⏱ 50s</span>
+  </div>
+</header>
+<main>
+  <div class="instructions">
+    Você é membro da CIPA fazendo a <b>inspeção de rotina</b> do laboratório de TI. Clique nas <b>7 irregularidades</b>
+    que precisam entrar na ata da reunião. Cuidado: alguns itens estão corretos — clicar neles gera penalidade!
+  </div>
+  <div class="lab" id="lab">
+    <div class="rack"></div>
+    <div class="desk"></div>
+  </div>
+  <div id="log"><b>Ata da inspeção:</b> nenhuma irregularidade registrada ainda.</div>
+</main>
+
+<div id="overlay">
+  <h2 id="overTitle"></h2>
+  <p id="overText"></p>
+  <button onclick="startGame()">Jogar novamente</button>
+</div>
+
+<script>
+const room = document.getElementById('lab');
+const items = [
+  {emoji:'🧯',hazard:false,desc:'Extintor devidamente sinalizado'},
+  {emoji:'🚪',hazard:true, desc:'Saída de emergência bloqueada por caixas'},
+  {emoji:'⚡',hazard:true, desc:'Fiação exposta perto do rack de servidores'},
+  {emoji:'🧷',hazard:true, desc:'Cabos de rede soltos no meio do corredor'},
+  {emoji:'🧴',hazard:true, desc:'Produto de limpeza sem identificação sobre a bancada'},
+  {emoji:'🪑',hazard:true, desc:'Cadeira quebrada ainda em uso'},
+  {emoji:'💡',hazard:false,desc:'Iluminação adequada'},
+  {emoji:'🥽',hazard:true, desc:'Ausência de EPI (óculos) na bancada de solda'},
+  {emoji:'📋',hazard:false,desc:'Mapa de Riscos afixado corretamente'},
+  {emoji:'🔥',hazard:true, desc:'Ponto de recarga de bateria sem ventilação'},
+  {emoji:'🖥️',hazard:false,desc:'Estação de trabalho organizada'},
+  {emoji:'🧑‍💻',hazard:false,desc:'Colaborador usando pulseira antiestática'}
+];
+let score=0, timeLeft=50, timerId=null, foundCount=0, totalHazards=0;
+function rand(a,b){return Math.random()*(b-a)+a;}
+
+function startGame(){
+  document.getElementById('overlay').style.display='none';
+  score=0; timeLeft=50; foundCount=0;
+  document.getElementById('score').textContent=score;
+  document.getElementById('timer').textContent='⏱ 50s';
+  document.getElementById('log').innerHTML='<b>Ata da inspeção:</b> nenhuma irregularidade registrada ainda.';
+  document.querySelectorAll('.obj').forEach(e=>e.remove());
+  totalHazards = items.filter(i=>i.hazard).length;
+
+  const positions=[];
+  items.forEach(item=>{
+    const el=document.createElement('div');
+    el.className='obj'; el.textContent=item.emoji;
+    let top,left,tries=0,overlap;
+    do{
+      top=rand(8,85); left=rand(15,88); overlap=false; tries++;
+      for(const p of positions){ if(Math.abs(p.top-top)<13 && Math.abs(p.left-left)<13){overlap=true;break;} }
+    } while(overlap && tries<50);
+    positions.push({top,left});
+    el.style.top=top+'%'; el.style.left=left+'%';
+    el.onclick=()=>handleClick(el,item);
+    room.appendChild(el);
+  });
+
+  clearInterval(timerId);
+  timerId=setInterval(()=>{
+    timeLeft--;
+    document.getElementById('timer').textContent='⏱ '+timeLeft+'s';
+    if(timeLeft<=0){clearInterval(timerId); endGame(false);}
+  },1000);
+}
+
+function handleClick(el,item){
+  if(el.classList.contains('found')) return;
+  el.classList.add('found');
+  const msg=document.createElement('div');
+  msg.className='floatmsg '+(item.hazard?'found-good':'found-bad');
+  msg.style.top=el.style.top; msg.style.left=el.style.left;
+  const log=document.getElementById('log');
+  if(item.hazard){
+    score+=12; foundCount++;
+    msg.textContent='+12';
+    log.innerHTML+=`<div class="badge">📝 ${item.desc}</div>`;
+  } else {
+    score=Math.max(0,score-6);
+    msg.textContent='-6';
+    log.innerHTML+=`<div class="badge">⚠️ Item correto marcado por engano</div>`;
+  }
+  room.appendChild(msg);
+  setTimeout(()=>msg.remove(),1000);
+  document.getElementById('score').textContent=score;
+  if(foundCount>=totalHazards){clearInterval(timerId); endGame(true);}
+}
+
+function endGame(win){
+  document.getElementById('overlay').style.display='flex';
+  document.getElementById('overTitle').textContent= win?'🎉 Inspeção concluída!':'⏱ Tempo esgotado!';
+  document.getElementById('overText').textContent=`Você registrou ${foundCount} de ${totalHazards} irregularidades e fez ${score} pontos.`;
+}
+startGame();
+</script>
+</body>
+</html>

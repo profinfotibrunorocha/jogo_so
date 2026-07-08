@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<title>Linha do Tempo PCMSO</title>
+<style>
+  :root{--azul:#0b3d78;--laranja:#f26522;--bg:#f2f4f8;}
+  *{box-sizing:border-box;font-family:'Segoe UI',Arial,sans-serif;}
+  body{margin:0;background:var(--bg);color:#1c2b3a;}
+  header{background:var(--azul);color:#fff;padding:18px 24px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;}
+  header h1{margin:0;font-size:1.4rem;}
+  .hud span{background:rgba(255,255,255,.15);padding:6px 14px;border-radius:20px;font-weight:bold;margin-left:10px;}
+  main{max-width:960px;margin:20px auto;padding:0 16px;}
+  .instructions{background:#fff;border-left:6px solid var(--laranja);padding:14px 18px;border-radius:8px;margin-bottom:16px;font-size:.95rem;}
+  #cardZone{display:flex;flex-wrap:wrap;gap:10px;justify-content:center;margin-bottom:20px;}
+  .card{background:#fff;border:2px solid #cfd8e3;border-radius:10px;padding:10px 14px;font-size:.85rem;cursor:pointer;box-shadow:0 2px 4px rgba(0,0,0,.08);max-width:190px;text-align:center;}
+  .card:hover{transform:translateY(-3px);}
+  .card.selected{outline:3px solid var(--laranja);}
+  .card.placed{opacity:.2;pointer-events:none;}
+  .timeline{position:relative;background:#fff;border:3px solid var(--azul);border-radius:14px;padding:30px 16px;display:flex;justify-content:space-between;gap:6px;min-height:150px;}
+  .timeline::before{content:'';position:absolute;top:50%;left:16px;right:16px;height:4px;background:#c9d8ea;z-index:0;}
+  .slot{flex:1;position:relative;z-index:1;display:flex;flex-direction:column;align-items:center;gap:6px;}
+  .dot{width:20px;height:20px;border-radius:50%;background:#c9d8ea;border:3px solid #fff;box-shadow:0 0 0 2px #9db3ce;cursor:pointer;}
+  .dot.filled{background:var(--laranja);box-shadow:0 0 0 2px var(--laranja);}
+  .slotlabel{font-size:.7rem;color:#5b6b82;text-align:center;min-height:34px;}
+  .placedcard{font-size:.75rem;font-weight:bold;background:#eef3fb;border-radius:8px;padding:4px 6px;text-align:center;max-width:100px;}
+  #log{background:#fff;border-radius:8px;padding:12px 18px;margin-top:16px;font-size:.9rem;}
+  .badge{display:inline-block;border-radius:20px;padding:4px 10px;margin:3px 4px 0 0;font-size:.8rem;color:#fff;}
+  .ok{background:#1c7c3c;} .bad{background:#c0392b;}
+  #overlay{position:fixed;inset:0;background:rgba(11,61,120,.92);color:#fff;display:none;align-items:center;justify-content:center;flex-direction:column;text-align:center;padding:20px;}
+  button{background:var(--laranja);color:#fff;border:none;padding:12px 26px;border-radius:30px;font-size:1rem;cursor:pointer;margin-top:16px;font-weight:bold;}
+</style>
+</head>
+<body>
+<header>
+  <h1>🗓️ Linha do Tempo PCMSO</h1>
+  <div class="hud">
+    <span>⭐ Pontos: <span id="score">0</span></span>
+    <span id="timerLabel">⏱ 70s</span>
+  </div>
+</header>
+<main>
+  <div class="instructions">
+    Monte a <b>trajetória do técnico de TI</b> na empresa: selecione uma carta e clique no espaço correto da linha do tempo,
+    na ordem cronológica certa. Preste atenção também aos programas <b>PGR</b> e <b>PCMAT</b> que aparecem no caminho!
+  </div>
+  <div id="cardZone"></div>
+  <div class="timeline" id="timeline"></div>
+  <div id="log"><b>Registro:</b> nenhum evento posicionado ainda.</div>
+</main>
+
+<div id="overlay">
+  <h2 id="overTitle"></h2>
+  <p id="overText"></p>
+  <button onclick="startGame()">Jogar novamente</button>
+</div>
+
+<script>
+const events = [
+  {id:'e1', text:'📋 PGR elaborado (inventário de riscos do local)'},
+  {id:'e2', text:'🩺 Exame Admissional'},
+  {id:'e3', text:'🏗️ PCMAT (obra de cabeamento estrutural)'},
+  {id:'e4', text:'🩺 Exame Periódico 1'},
+  {id:'e5', text:'📋 Revisão anual do PGR'},
+  {id:'e6', text:'🩺 Exame Periódico 2'},
+  {id:'e7', text:'🎉 Participação na SIPAT'},
+  {id:'e8', text:'🩺 Exame Demissional'}
+];
+// ordem correta é a própria ordem do array (e1..e8)
+
+let selected=null, score=0, placedCount=0, timeLeft=70, timerId=null;
+
+function shuffle(a){return a.map(v=>[Math.random(),v]).sort((x,y)=>x[0]-y[0]).map(v=>v[1]);}
+
+function startGame(){
+  document.getElementById('overlay').style.display='none';
+  score=0; placedCount=0; timeLeft=70; selected=null;
+  document.getElementById('score').textContent=score;
+  document.getElementById('timerLabel').textContent='⏱ 70s';
+  document.getElementById('log').innerHTML='<b>Registro:</b> nenhum evento posicionado ainda.';
+
+  const zone=document.getElementById('cardZone');
+  zone.innerHTML='';
+  shuffle(events).forEach(ev=>{
+    const c=document.createElement('div');
+    c.className='card'; c.textContent=ev.text; c.dataset.id=ev.id;
+    c.onclick=()=>{
+      if(c.classList.contains('placed')) return;
+      document.querySelectorAll('.card').forEach(x=>x.classList.remove('selected'));
+      c.classList.add('selected');
+      selected=ev;
+    };
+    zone.appendChild(c);
+  });
+
+  const tl=document.getElementById('timeline');
+  tl.innerHTML='';
+  events.forEach((ev,i)=>{
+    const slot=document.createElement('div');
+    slot.className='slot';
+    slot.innerHTML=`<div class="slotlabel">Posição ${i+1}</div><div class="dot" data-pos="${i}"></div><div class="placedcard" data-pos="${i}"></div>`;
+    slot.querySelector('.dot').onclick=()=>placeAt(i);
+    tl.appendChild(slot);
+  });
+
+  clearInterval(timerId);
+  timerId=setInterval(()=>{
+    timeLeft--;
+    document.getElementById('timerLabel').textContent='⏱ '+timeLeft+'s';
+    if(timeLeft<=0){clearInterval(timerId); endGame(false);}
+  },1000);
+}
+
+function placeAt(pos){
+  if(!selected) return;
+  const log=document.getElementById('log');
+  const correctIndex = events.findIndex(e=>e.id===selected.id);
+  const dot=document.querySelector(`.dot[data-pos="${pos}"]`);
+  const label=document.querySelector(`.placedcard[data-pos="${pos}"]`);
+  if(dot.classList.contains('filled')) return;
+
+  if(correctIndex === pos){
+    score+=12; placedCount++;
+    dot.classList.add('filled');
+    label.textContent = selected.text;
+    log.innerHTML+=`<span class="badge ok">✔ ${selected.text}</span>`;
+    document.querySelector(`.card[data-id="${selected.id}"]`).classList.add('placed');
+  } else {
+    score=Math.max(0,score-5);
+    log.innerHTML+=`<span class="badge bad">✘ Posição errada para: ${selected.text}</span>`;
+  }
+  document.getElementById('score').textContent=score;
+  document.querySelectorAll('.card').forEach(c=>c.classList.remove('selected'));
+  selected=null;
+
+  if(placedCount>=events.length){clearInterval(timerId); endGame(true);}
+}
+
+function endGame(win){
+  document.getElementById('overlay').style.display='flex';
+  document.getElementById('overTitle').textContent= win?'🎉 Linha do tempo completa!':'⏱ Tempo esgotado!';
+  document.getElementById('overText').textContent=`Você posicionou corretamente ${placedCount} de ${events.length} eventos e fez ${score} pontos.`;
+}
+startGame();
+</script>
+</body>
+</html>

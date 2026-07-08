@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<title>Ajuste a Postura</title>
+<style>
+  :root{--azul:#0b3d78;--laranja:#f26522;--bg:#f2f4f8;--verde:#1c7c3c;--vermelho:#c0392b;}
+  *{box-sizing:border-box;font-family:'Segoe UI',Arial,sans-serif;}
+  body{margin:0;background:var(--bg);color:#1c2b3a;}
+  header{background:var(--azul);color:#fff;padding:18px 24px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;}
+  header h1{margin:0;font-size:1.4rem;}
+  .hud span{background:rgba(255,255,255,.15);padding:6px 14px;border-radius:20px;font-weight:bold;margin-left:10px;}
+  main{max-width:920px;margin:20px auto;padding:0 16px;display:flex;gap:24px;flex-wrap:wrap;}
+  .instructions{background:#fff;border-left:6px solid var(--laranja);padding:14px 18px;border-radius:8px;margin-bottom:16px;font-size:.95rem;flex:1 1 100%;}
+  .stage{flex:1 1 340px;background:#fff;border-radius:14px;border:3px solid var(--azul);padding:16px;display:flex;flex-direction:column;align-items:center;}
+  svg{width:100%;max-width:280px;}
+  .controls{flex:1 1 340px;display:flex;flex-direction:column;gap:18px;}
+  .slider-box{background:#fff;border-radius:10px;padding:14px 18px;box-shadow:0 2px 6px rgba(0,0,0,.08);}
+  .slider-box label{font-weight:bold;display:flex;justify-content:space-between;}
+  .status{font-size:.85rem;margin-top:6px;font-weight:bold;}
+  .ok{color:var(--verde);} .bad{color:var(--vermelho);}
+  input[type=range]{width:100%;margin-top:8px;}
+  #timer{margin-top:10px;font-weight:bold;}
+  button{background:var(--laranja);color:#fff;border:none;padding:12px 26px;border-radius:30px;font-size:1rem;cursor:pointer;margin-top:16px;font-weight:bold;}
+  #overlay{position:fixed;inset:0;background:rgba(11,61,120,.92);color:#fff;display:none;align-items:center;justify-content:center;flex-direction:column;text-align:center;padding:20px;}
+</style>
+</head>
+<body>
+<header>
+  <h1>🧍 Ajuste a Postura</h1>
+  <div class="hud">
+    <span>⭐ Pontos: <span id="score">0</span></span>
+    <span id="timerLabel">⏱ 45s</span>
+  </div>
+</header>
+<main>
+  <div class="instructions">
+    Regule os três controles para deixar o colaborador na <b>postura ergonômica correta (regra dos 90°)</b> antes que o tempo acabe.
+    A cada rodada os alvos mudam de posição — fique com os três indicadores verdes ao mesmo tempo para pontuar!
+  </div>
+
+  <div class="stage">
+    <svg viewBox="0 0 200 240">
+      <rect x="0" y="200" width="200" height="40" fill="#dfe7f2"/>
+      <!-- mesa -->
+      <rect id="mesa" x="90" y="150" width="90" height="10" fill="#a97449"/>
+      <rect x="95" y="160" width="6" height="40" fill="#7a5230"/>
+      <rect x="165" y="160" width="6" height="40" fill="#7a5230"/>
+      <!-- monitor -->
+      <g id="monitorGroup">
+        <rect id="monitor" x="110" y="90" width="55" height="38" rx="3" fill="#333"/>
+        <rect x="132" y="128" width="10" height="14" fill="#555"/>
+      </g>
+      <!-- boneco -->
+      <circle id="cabeca" cx="60" cy="90" r="14" fill="#f2c49b"/>
+      <rect id="tronco" x="48" y="104" width="26" height="55" rx="8" fill="#0b3d78"/>
+      <rect id="bracoSup" x="30" y="112" width="10" height="30" rx="4" fill="#f2c49b" transform="rotate(0 35 112)"/>
+      <!-- cadeira -->
+      <rect id="assento" x="40" y="159" width="44" height="10" fill="#444"/>
+      <rect x="40" y="169" width="6" height="31" fill="#222"/>
+      <rect x="78" y="169" width="6" height="31" fill="#222"/>
+    </svg>
+  </div>
+
+  <div class="controls">
+    <div class="slider-box">
+      <label>🪑 Altura da cadeira <span id="v1">50</span></label>
+      <input type="range" id="s1" min="0" max="100" value="50">
+      <div class="status" id="st1">ajustando...</div>
+    </div>
+    <div class="slider-box">
+      <label>🖥️ Altura do monitor <span id="v2">50</span></label>
+      <input type="range" id="s2" min="0" max="100" value="50">
+      <div class="status" id="st2">ajustando...</div>
+    </div>
+    <div class="slider-box">
+      <label>💪 Ângulo do cotovelo (90°) <span id="v3">50</span></label>
+      <input type="range" id="s3" min="0" max="100" value="50">
+      <div class="status" id="st3">ajustando...</div>
+    </div>
+    <div id="timerLabel2"></div>
+  </div>
+</main>
+
+<div id="overlay">
+  <h2 id="overTitle"></h2>
+  <p id="overText"></p>
+  <button onclick="startGame()">Jogar novamente</button>
+</div>
+
+<script>
+const s1=document.getElementById('s1'), s2=document.getElementById('s2'), s3=document.getElementById('s3');
+const v1=document.getElementById('v1'), v2=document.getElementById('v2'), v3=document.getElementById('v3');
+const st1=document.getElementById('st1'), st2=document.getElementById('st2'), st3=document.getElementById('st3');
+const scoreEl=document.getElementById('score'), timerEl=document.getElementById('timer'), timerLabel = document.getElementById('timerLabel');
+
+let targets, score=0, timeLeft=45, timerId=null, holdFrames=0, roundsWon=0;
+
+function rand(a,b){return Math.floor(Math.random()*(b-a+1))+a;}
+
+function newTargets(){
+  targets = { t1:[rand(20,35)+ (rand(0,1)?0:30), 0], t2:[rand(15,30),0], t3:[rand(40,60),0] };
+  // build ranges of width ~15
+  targets.r1 = [rand(35,55), 0]; targets.r1[1]=targets.r1[0]+15;
+  targets.r2 = [rand(35,55), 0]; targets.r2[1]=targets.r2[0]+15;
+  targets.r3 = [rand(35,55), 0]; targets.r3[1]=targets.r3[0]+15;
+}
+
+function checkSlider(val,range,statusEl){
+  const ok = val>=range[0] && val<=range[1];
+  statusEl.textContent = ok? '✅ dentro da faixa ideal':'⚠️ fora da faixa ideal';
+  statusEl.className='status '+(ok?'ok':'bad');
+  return ok;
+}
+
+function updateAll(){
+  v1.textContent=s1.value; v2.textContent=s2.value; v3.textContent=s3.value;
+  const ok1=checkSlider(+s1.value, targets.r1, st1);
+  const ok2=checkSlider(+s2.value, targets.r2, st2);
+  const ok3=checkSlider(+s3.value, targets.r3, st3);
+
+  // atualiza SVG
+  document.getElementById('assento').setAttribute('y', 200 - s1.value*0.6);
+  document.getElementById('tronco').setAttribute('y', 200 - s1.value*0.6 - 55);
+  document.getElementById('cabeca').setAttribute('cy', 200 - s1.value*0.6 - 69);
+  document.getElementById('monitorGroup').setAttribute('transform', `translate(0, ${(50-s2.value)*0.8})`);
+
+  if(ok1 && ok2 && ok3){
+    holdFrames++;
+    if(holdFrames===1){ score+=25; scoreEl.textContent=score; roundsWon++; }
+    if(holdFrames>25){ newTargets(); holdFrames=0; }
+  } else {
+    holdFrames=0;
+  }
+}
+
+[s1,s2,s3].forEach(s=>s.addEventListener('input',updateAll));
+
+function startGame(){
+  document.getElementById('overlay').style.display='none';
+  score=0; timeLeft=45; roundsWon=0; holdFrames=0;
+  scoreEl.textContent=score;
+  timerLabel.textContent='⏱ 45s';
+  s1.value=50; s2.value=50; s3.value=50;
+  newTargets();
+  updateAll();
+  clearInterval(timerId);
+  timerId=setInterval(()=>{
+    timeLeft--;
+    timerLabel.textContent='⏱ '+timeLeft+'s';
+    if(timeLeft<=0){ clearInterval(timerId); endGame(); }
+  },1000);
+}
+
+function endGame(){
+  document.getElementById('overlay').style.display='flex';
+  document.getElementById('overTitle').textContent='⏱ Tempo esgotado!';
+  document.getElementById('overText').textContent=`Você conseguiu ${roundsWon} posturas corretas e fez ${score} pontos.`;
+}
+
+startGame();
+</script>
+</body>
+</html>

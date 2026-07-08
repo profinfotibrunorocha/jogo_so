@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<title>Caça-Risco Colorido</title>
+<style>
+  :root{--azul:#0b3d78;--laranja:#f26522;--bg:#f2f4f8;}
+  *{box-sizing:border-box;font-family:'Segoe UI',Arial,sans-serif;}
+  body{margin:0;background:var(--bg);color:#1c2b3a;}
+  header{background:var(--azul);color:#fff;padding:18px 24px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;}
+  header h1{margin:0;font-size:1.4rem;}
+  .hud span{background:rgba(255,255,255,.15);padding:6px 14px;border-radius:20px;font-weight:bold;margin-left:10px;}
+  main{max-width:980px;margin:20px auto;padding:0 16px 40px;}
+  .instructions{background:#fff;border-left:6px solid var(--laranja);padding:14px 18px;border-radius:8px;margin-bottom:16px;font-size:.95rem;}
+  #cardZone{display:flex;flex-wrap:wrap;gap:10px;justify-content:center;margin-bottom:24px;min-height:70px;}
+  .card{background:#fff;border:2px solid #cfd8e3;border-radius:10px;padding:12px 16px;max-width:230px;font-size:.85rem;cursor:pointer;box-shadow:0 2px 4px rgba(0,0,0,.08);transition:.15s;}
+  .card:hover{transform:translateY(-3px);box-shadow:0 6px 10px rgba(0,0,0,.12);}
+  .card.selected{outline:3px solid var(--laranja);}
+  .bins{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;}
+  .bin{border-radius:12px;padding:14px 8px;text-align:center;color:#fff;font-weight:bold;min-height:110px;cursor:pointer;display:flex;flex-direction:column;justify-content:center;gap:6px;box-shadow:0 3px 6px rgba(0,0,0,.15);transition:.15s;}
+  .bin:hover{transform:scale(1.04);}
+  .bin span.count{background:rgba(255,255,255,.25);border-radius:20px;padding:2px 10px;font-size:.85rem;}
+  .fisico{background:#2e9e4a;} .quimico{background:#d64545;} .biologico{background:#8a5a2b;}
+  .ergonomico{background:#e0a800;color:#3a2c00;} .acidente{background:#2864c9;}
+  #log{background:#fff;border-radius:8px;padding:12px 18px;margin-top:20px;font-size:.9rem;}
+  .badge{display:inline-block;border-radius:20px;padding:4px 10px;margin:3px 4px 0 0;font-size:.8rem;color:#fff;}
+  .ok{background:#1c7c3c;} .bad{background:#c0392b;}
+  #overlay{position:fixed;inset:0;background:rgba(11,61,120,.92);color:#fff;display:none;align-items:center;justify-content:center;flex-direction:column;text-align:center;padding:20px;}
+  button{background:var(--laranja);color:#fff;border:none;padding:12px 26px;border-radius:30px;font-size:1rem;cursor:pointer;margin-top:16px;font-weight:bold;}
+</style>
+</head>
+<body>
+<header>
+  <h1>🎯 Caça-Risco Colorido</h1>
+  <div class="hud">
+    <span>⭐ Pontos: <span id="score">0</span></span>
+    <span id="timer">⏱ 90s</span>
+  </div>
+</header>
+<main>
+  <div class="instructions">
+    1️⃣ Clique em uma carta de situação para selecioná-la. &nbsp; 2️⃣ Clique na cor do <b>Mapa de Riscos</b> correspondente para classificá-la.
+    Acerte todas as <b>12 situações</b> antes do tempo acabar!
+  </div>
+  <div id="cardZone"></div>
+  <div class="bins">
+    <div class="bin fisico" data-cat="fisico">🟢 Físico <span class="count">0</span></div>
+    <div class="bin quimico" data-cat="quimico">🔴 Químico <span class="count">0</span></div>
+    <div class="bin biologico" data-cat="biologico">🟤 Biológico <span class="count">0</span></div>
+    <div class="bin ergonomico" data-cat="ergonomico">🟡 Ergonômico <span class="count">0</span></div>
+    <div class="bin acidente" data-cat="acidente">🔵 Acidentes <span class="count">0</span></div>
+  </div>
+  <div id="log"><b>Registro:</b> nenhuma carta classificada ainda.</div>
+</main>
+
+<div id="overlay">
+  <h2 id="overTitle"></h2>
+  <p id="overText"></p>
+  <button onclick="startGame()">Jogar novamente</button>
+</div>
+
+<script>
+const situations = [
+  {text:'Calor excessivo de servidores sem climatização', cat:'fisico'},
+  {text:'Ruído alto de ventoinhas e ar-condicionado industrial', cat:'fisico'},
+  {text:'Vapor de álcool isopropílico usado na limpeza de placas', cat:'quimico'},
+  {text:'Spray solvente usado em espaço fechado', cat:'quimico'},
+  {text:'Mouse e teclado compartilhados sem higienização', cat:'biologico'},
+  {text:'Acúmulo de fungos em copos e xícaras na bancada', cat:'biologico'},
+  {text:'Postura incorreta prolongada ao digitar', cat:'ergonomico'},
+  {text:'Iluminação ruim causando fadiga visual', cat:'ergonomico'},
+  {text:'Cadeira sem apoio lombar adequado', cat:'ergonomico'},
+  {text:'Fios expostos e computador mal aterrado', cat:'acidente'},
+  {text:'Piso molhado próximo a tomadas elétricas', cat:'acidente'},
+  {text:'Cabos soltos no chão causando risco de queda', cat:'acidente'}
+];
+
+let selectedCard = null, score = 0, correctCount = 0, timeLeft = 90, timerId=null;
+const counts = {fisico:0,quimico:0,biologico:0,ergonomico:0,acidente:0};
+
+function shuffle(arr){return arr.map(v=>[Math.random(),v]).sort((a,b)=>a[0]-b[0]).map(v=>v[1]);}
+
+function startGame(){
+  document.getElementById('overlay').style.display='none';
+  score=0; correctCount=0; timeLeft=90; selectedCard=null;
+  Object.keys(counts).forEach(k=>counts[k]=0);
+  document.getElementById('score').textContent=score;
+  document.getElementById('timer').textContent='⏱ 90s';
+  document.getElementById('log').innerHTML='<b>Registro:</b> nenhuma carta classificada ainda.';
+  document.querySelectorAll('.bin .count').forEach(c=>c.textContent='0');
+
+  const zone = document.getElementById('cardZone');
+  zone.innerHTML='';
+  shuffle(situations).forEach((s,i)=>{
+    const c = document.createElement('div');
+    c.className='card'; c.textContent=s.text; c.dataset.cat=s.cat; c.dataset.id=i;
+    c.onclick=()=>selectCard(c);
+    zone.appendChild(c);
+  });
+
+  clearInterval(timerId);
+  timerId=setInterval(()=>{
+    timeLeft--;
+    document.getElementById('timer').textContent='⏱ '+timeLeft+'s';
+    if(timeLeft<=0){clearInterval(timerId); endGame(false);}
+  },1000);
+}
+
+function selectCard(card){
+  if(card.classList.contains('done')) return;
+  document.querySelectorAll('.card').forEach(c=>c.classList.remove('selected'));
+  card.classList.add('selected');
+  selectedCard = card;
+}
+
+document.querySelectorAll('.bin').forEach(bin=>{
+  bin.onclick = ()=>{
+    if(!selectedCard) return;
+    const cat = bin.dataset.cat;
+    const log = document.getElementById('log');
+    if(selectedCard.dataset.cat === cat){
+      score+=10; correctCount++;
+      counts[cat]++;
+      bin.querySelector('.count').textContent = counts[cat];
+      log.innerHTML += `<span class="badge ok">✔ "${selectedCard.textContent.slice(0,28)}..."</span>`;
+      selectedCard.classList.add('done');
+      selectedCard.style.opacity=.25; selectedCard.style.pointerEvents='none';
+    } else {
+      score = Math.max(0,score-4);
+      log.innerHTML += `<span class="badge bad">✘ Categoria errada, tente outra vez</span>`;
+    }
+    document.getElementById('score').textContent=score;
+    selectedCard.classList.remove('selected');
+    selectedCard=null;
+    if(correctCount>=situations.length){clearInterval(timerId); endGame(true);}
+  };
+});
+
+function endGame(win){
+  document.getElementById('overlay').style.display='flex';
+  document.getElementById('overTitle').textContent = win?'🎉 Mapa de Riscos completo!':'⏱ Tempo esgotado!';
+  document.getElementById('overText').textContent = `Você classificou corretamente ${correctCount} de ${situations.length} situações e fez ${score} pontos.`;
+}
+
+startGame();
+</script>
+</body>
+</html>

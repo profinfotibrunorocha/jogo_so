@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<title>Corrida da SIPAT</title>
+<style>
+  :root{--azul:#0b3d78;--laranja:#f26522;--bg:#f2f4f8;}
+  *{box-sizing:border-box;font-family:'Segoe UI',Arial,sans-serif;}
+  body{margin:0;background:var(--bg);color:#1c2b3a;text-align:center;}
+  header{background:var(--azul);color:#fff;padding:18px 24px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;}
+  header h1{margin:0;font-size:1.4rem;text-align:left;}
+  .hud span{background:rgba(255,255,255,.15);padding:6px 14px;border-radius:20px;font-weight:bold;margin-left:10px;}
+  main{max-width:820px;margin:20px auto;padding:0 16px;}
+  .instructions{background:#fff;border-left:6px solid var(--laranja);padding:14px 18px;border-radius:8px;margin-bottom:16px;font-size:.95rem;text-align:left;}
+  canvas{background:linear-gradient(#bcd9f5,#eaf3fc 70%,#d8ecd0);border:3px solid var(--azul);border-radius:14px;max-width:100%;touch-action:none;}
+  button{background:var(--laranja);color:#fff;border:none;padding:12px 26px;border-radius:30px;font-size:1rem;cursor:pointer;margin-top:14px;font-weight:bold;}
+  #msg{font-weight:bold;margin-top:8px;min-height:26px;}
+</style>
+</head>
+<body>
+<header>
+  <h1>🏃 Corrida da SIPAT</h1>
+  <div class="hud">
+    <span>⭐ Pontos: <span id="score">0</span></span>
+    <span>❤️ Vidas: <span id="lives">3</span></span>
+  </div>
+</header>
+<main>
+  <div class="instructions">
+    Desvie dos <b>riscos</b> (🔌 cabo solto, 💧 poça d'água, 🧯 obstáculo) pulando com a tecla <b>Espaço</b>, clique ou toque na tela.
+    Colete os itens de <b>segurança</b> (🥽 EPI, 🧑‍⚕️ primeiros socorros, 📋 checklist) para ganhar pontos extras!
+  </div>
+  <canvas id="game" width="760" height="320"></canvas>
+  <div id="msg">Pressione ESPAÇO / toque para começar a corrida da SIPAT!</div>
+  <button onclick="resetGame()">Reiniciar</button>
+</main>
+
+<script>
+const canvas=document.getElementById('game'), ctx=canvas.getContext('2d');
+const scoreEl=document.getElementById('score'), livesEl=document.getElementById('lives'), msgEl=document.getElementById('msg');
+
+let groundY=260, player, obstacles, gravity=0.9, speed=6, score=0, lives=3, running=false, frame=0, spawnTimer=0;
+
+function initPlayer(){ return {x:80,y:groundY-40,w:40,h:40,vy:0,jumping:false}; }
+
+function resetGame(){
+  player=initPlayer(); obstacles=[]; score=0; lives=3; speed=6; frame=0; spawnTimer=0; running=true;
+  scoreEl.textContent=score; livesEl.textContent=lives;
+  msgEl.textContent='Corra e desvie dos riscos!';
+  requestAnimationFrame(loop);
+}
+
+function jump(){
+  if(!running){ resetGame(); return; }
+  if(!player.jumping){ player.vy=-15; player.jumping=true; }
+}
+document.addEventListener('keydown',e=>{ if(e.code==='Space'){ e.preventDefault(); jump(); } });
+canvas.addEventListener('mousedown',jump);
+canvas.addEventListener('touchstart',e=>{e.preventDefault();jump();});
+
+function spawnObstacle(){
+  const hazards=[{e:'🔌',bad:true},{e:'💧',bad:true},{e:'⚠️',bad:true}];
+  const safes=[{e:'🥽',bad:false},{e:'🧑‍⚕️',bad:false},{e:'📋',bad:false},{e:'🧯',bad:false}];
+  const isHazard = Math.random()<0.62;
+  const pick = isHazard ? hazards[Math.floor(Math.random()*hazards.length)] : safes[Math.floor(Math.random()*safes.length)];
+  const flying = !isHazard && Math.random()<0.7;
+  obstacles.push({x:canvas.width+20, y: flying? groundY-100-Math.random()*40 : groundY-36, w:34,h:34, emoji:pick.e, bad:pick.bad, passed:false});
+}
+
+function loop(){
+  if(!running) return;
+  frame++;
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+
+  // chão
+  ctx.fillStyle='#8fbf6b';
+  ctx.fillRect(0,groundY+40,canvas.width,10);
+  ctx.strokeStyle='#5f8c3d'; ctx.lineWidth=3;
+  ctx.beginPath(); ctx.moveTo(0,groundY+40); ctx.lineTo(canvas.width,groundY+40); ctx.stroke();
+
+  // jogador (física)
+  player.vy += gravity;
+  player.y += player.vy;
+  if(player.y > groundY-40){ player.y=groundY-40; player.vy=0; player.jumping=false; }
+  ctx.font='36px serif';
+  ctx.fillText('🧑‍💻', player.x, player.y+36);
+
+  // obstáculos
+  spawnTimer--;
+  if(spawnTimer<=0){ spawnObstacle(); spawnTimer = 55 - Math.min(30, Math.floor(frame/300)); }
+
+  obstacles.forEach(o=>{
+    o.x -= speed;
+    ctx.font='32px serif';
+    ctx.fillText(o.emoji, o.x, o.y+30);
+
+    // colisão simples (bounding box)
+    const px=player.x, py=player.y, pw=36, ph=36;
+    if(o.x < px+pw && o.x+o.w > px && o.y < py+ph && o.y+o.h > py){
+      if(!o.hit){
+        o.hit=true;
+        if(o.bad){
+          lives--; livesEl.textContent=lives;
+          msgEl.textContent='⚠️ Você bateu em um risco!';
+          if(lives<=0){ endGame(); }
+        } else {
+          score+=15; scoreEl.textContent=score;
+          msgEl.textContent='✅ Item de segurança coletado! +15';
+        }
+      }
+    }
+  });
+
+  obstacles = obstacles.filter(o=> o.x > -50);
+
+  if(frame%90===0){ score+=2; scoreEl.textContent=score; speed = Math.min(13, speed+0.15); }
+
+  requestAnimationFrame(loop);
+}
+
+function endGame(){
+  running=false;
+  msgEl.textContent = `💥 Fim de jogo! Pontuação final: ${score}. Clique em reiniciar para tentar de novo.`;
+}
+</script>
+</body>
+</html>

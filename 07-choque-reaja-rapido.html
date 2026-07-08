@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<title>Choque! Reaja Rápido</title>
+<style>
+  :root{--azul:#0b3d78;--laranja:#f26522;--bg:#f2f4f8;}
+  *{box-sizing:border-box;font-family:'Segoe UI',Arial,sans-serif;}
+  body{margin:0;background:var(--bg);color:#1c2b3a;text-align:center;}
+  header{background:var(--azul);color:#fff;padding:18px 24px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;}
+  header h1{margin:0;font-size:1.4rem;text-align:left;}
+  .hud span{background:rgba(255,255,255,.15);padding:6px 14px;border-radius:20px;font-weight:bold;margin-left:10px;}
+  main{max-width:760px;margin:20px auto;padding:0 16px;}
+  .instructions{background:#fff;border-left:6px solid var(--laranja);padding:14px 18px;border-radius:8px;margin-bottom:16px;font-size:.95rem;text-align:left;}
+  .scenario{background:#fff;border:3px solid var(--azul);border-radius:16px;padding:26px 18px;min-height:110px;display:flex;flex-direction:column;justify-content:center;align-items:center;gap:8px;}
+  .scenario .emoji{font-size:3rem;}
+  .scenario .text{font-weight:bold;font-size:1.1rem;}
+  .options{display:grid;grid-template-columns:repeat(2,1fr);gap:12px;margin-top:18px;}
+  .opt{background:#eef3fb;border:2px solid #c9d8ea;border-radius:12px;padding:16px;cursor:pointer;font-size:1rem;font-weight:bold;transition:.12s;}
+  .opt:hover{background:#dbe6f6;}
+  .opt.correct{background:#1c7c3c;color:#fff;border-color:#1c7c3c;}
+  .opt.wrong{background:#c0392b;color:#fff;border-color:#c0392b;}
+  #bar{height:10px;background:#dbe3ee;border-radius:6px;overflow:hidden;margin-top:16px;}
+  #barInner{height:100%;background:var(--laranja);width:100%;transition:width .05s linear;}
+  #overlay{position:fixed;inset:0;background:rgba(11,61,120,.92);color:#fff;display:none;align-items:center;justify-content:center;flex-direction:column;text-align:center;padding:20px;}
+  button{background:var(--laranja);color:#fff;border:none;padding:12px 26px;border-radius:30px;font-size:1rem;cursor:pointer;margin-top:16px;font-weight:bold;}
+</style>
+</head>
+<body>
+<header>
+  <h1>⚡ Choque! Reaja Rápido</h1>
+  <div class="hud">
+    <span>⭐ Pontos: <span id="score">0</span></span>
+    <span>❤️ Vidas: <span id="lives">3</span></span>
+    <span>🔥 Rodada: <span id="round">1</span>/10</span>
+  </div>
+</header>
+<main>
+  <div class="instructions">
+    Uma situação de emergência aparece — escolha a <b>ação correta</b> o mais rápido possível! Quanto mais rápido, mais pontos.
+    Você tem <b>3 vidas</b>. Boa sorte, técnico!
+  </div>
+  <div class="scenario">
+    <div class="emoji" id="scEmoji">⚡</div>
+    <div class="text" id="scText">Preparando...</div>
+  </div>
+  <div class="options" id="options"></div>
+  <div id="bar"><div id="barInner"></div></div>
+</main>
+
+<div id="overlay">
+  <h2 id="overTitle"></h2>
+  <p id="overText"></p>
+  <button onclick="startGame()">Jogar novamente</button>
+</div>
+
+<script>
+const scenarios = [
+  {emoji:'🔥', text:'Fogo em um servidor ligado! O que fazer?', options:[
+    {t:'🧯 Usar extintor de CO2', ok:true},
+    {t:'💧 Jogar água no equipamento', ok:false},
+    {t:'🧴 Usar espuma comum', ok:false},
+    {t:'🤷 Ignorar e continuar trabalhando', ok:false}]},
+  {emoji:'😵', text:'Colega em choque elétrico, ainda em contato com o fio!', options:[
+    {t:'✋ Puxar a pessoa com a mão', ok:false},
+    {t:'🔌 Desligar a chave geral primeiro', ok:true},
+    {t:'💧 Jogar água para "acordar"', ok:false},
+    {t:'📱 Postar nas redes sociais', ok:false}]},
+  {emoji:'💥', text:'Você vai abrir o gabinete sem descarregar a estática do corpo.', options:[
+    {t:'🧤 Colocar pulseira ESD antes', ok:true},
+    {t:'🚫 Abrir direto, não faz diferença', ok:false},
+    {t:'🧴 Passar álcool nas mãos', ok:false},
+    {t:'🧊 Segurar gelo antes', ok:false}]},
+  {emoji:'🩹', text:'Colega sofreu queimadura leve no dedo com ferro de solda.', options:[
+    {t:'🧊 Passar gelo diretamente', ok:false},
+    {t:'💧 Lavar com água corrente fria por 15 min', ok:true},
+    {t:'🧈 Passar manteiga no local', ok:false},
+    {t:'🤐 Não fazer nada', ok:false}]},
+  {emoji:'🚪', text:'Saída de emergência do laboratório está bloqueada por caixas.', options:[
+    {t:'📦 Ignorar, não é sua função', ok:false},
+    {t:'🧹 Reportar à CIPA e liberar a passagem', ok:true},
+    {t:'📸 Só tirar foto para postar depois', ok:false},
+    {t:'🚶 Sair por outro caminho e esquecer', ok:false}]},
+  {emoji:'🔌', text:'Muitos equipamentos ligados numa única tomada (sobrecarga).', options:[
+    {t:'🔌 Distribuir a carga em tomadas/circuitos corretos', ok:true},
+    {t:'🔥 Ligar mais um aparelho', ok:false},
+    {t:'🤷 Deixar assim, funciona', ok:false},
+    {t:'🧯 Chamar o extintor preventivamente', ok:false}]},
+  {emoji:'🧪', text:'Frasco de álcool isopropílico aberto perto do calor do servidor.', options:[
+    {t:'🧴 Fechar e guardar em local ventilado', ok:true},
+    {t:'🔥 Aproximar mais do servidor', ok:false},
+    {t:'🤷 Deixar aberto, evapora rápido mesmo', ok:false},
+    {t:'💨 Ligar o ventilador só nele', ok:false}]},
+  {emoji:'🪑', text:'Cadeira ergonômica com pistão quebrado, ainda em uso.', options:[
+    {t:'🔧 Retirar de uso e solicitar manutenção/CIPA', ok:true},
+    {t:'🪵 Colocar um livro embaixo e seguir usando', ok:false},
+    {t:'🤷 Ignorar, não dói tanto', ok:false},
+    {t:'📸 Só fotografar para depois', ok:false}]},
+  {emoji:'🐜', text:'Formigas aparecendo perto de restos de lanche no teclado.', options:[
+    {t:'🧽 Limpar a bancada e evitar comer perto do PC', ok:true},
+    {t:'🍬 Deixar mais comida para elas irem embora', ok:false},
+    {t:'🤷 Não é problema de TI', ok:false},
+    {t:'🧴 Jogar álcool direto no teclado ligado', ok:false}]},
+  {emoji:'🌡️', text:'Sala do servidor está 35°C, muito acima do recomendado pela NR-17.', options:[
+    {t:'❄️ Acionar manutenção do ar-condicionado imediatamente', ok:true},
+    {t:'🤷 Trabalhar assim mesmo, é só um dia', ok:false},
+    {t:'🪟 Abrir só a porta e torcer', ok:false},
+    {t:'🔥 Ligar mais equipamentos', ok:false}]}
+];
+
+let idx=0, score=0, lives=3, timeLeft=100, timerId=null, order=[], answered=false;
+
+function shuffle(a){return a.map(v=>[Math.random(),v]).sort((x,y)=>x[0]-y[0]).map(v=>v[1]);}
+
+function startGame(){
+  document.getElementById('overlay').style.display='none';
+  order = shuffle(scenarios).slice(0,10);
+  idx=0; score=0; lives=3;
+  document.getElementById('score').textContent=score;
+  document.getElementById('lives').textContent=lives;
+  nextRound();
+}
+
+function nextRound(){
+  if(idx>=order.length){ return endGame(true); }
+  document.getElementById('round').textContent = idx+1;
+  const sc = order[idx];
+  answered=false;
+  document.getElementById('scEmoji').textContent=sc.emoji;
+  document.getElementById('scText').textContent=sc.text;
+  const optDiv=document.getElementById('options');
+  optDiv.innerHTML='';
+  const opts = shuffle(sc.options);
+  opts.forEach(o=>{
+    const b=document.createElement('div');
+    b.className='opt'; b.textContent=o.t;
+    b.onclick=()=>choose(b,o.ok);
+    optDiv.appendChild(b);
+  });
+  timeLeft=100;
+  document.getElementById('barInner').style.width='100%';
+  clearInterval(timerId);
+  timerId=setInterval(()=>{
+    timeLeft-=2;
+    document.getElementById('barInner').style.width=Math.max(0,timeLeft)+'%';
+    if(timeLeft<=0){ clearInterval(timerId); if(!answered) choose(null,false); }
+  },40);
+}
+
+function choose(el,ok){
+  if(answered) return;
+  answered=true;
+  clearInterval(timerId);
+  document.querySelectorAll('.opt').forEach(o=>o.style.pointerEvents='none');
+  if(el) el.classList.add(ok?'correct':'wrong');
+  if(ok){
+    const bonus = Math.max(5, Math.round(timeLeft/4));
+    score += 10+bonus;
+  } else {
+    lives--;
+    if(el){
+      // mostra a correta
+    }
+    document.querySelectorAll('.opt').forEach(o=>{
+      if(o.textContent === order[idx].options.find(x=>x.ok).t) o.classList.add('correct');
+    });
+  }
+  document.getElementById('score').textContent=score;
+  document.getElementById('lives').textContent=lives;
+
+  setTimeout(()=>{
+    if(lives<=0){ endGame(false); return; }
+    idx++;
+    nextRound();
+  },900);
+}
+
+function endGame(win){
+  document.getElementById('overlay').style.display='flex';
+  document.getElementById('overTitle').textContent = win? '🎉 Turno de emergência concluído!':'💥 Fim de jogo!';
+  document.getElementById('overText').textContent = `Pontuação final: ${score} pontos. Rodadas completas: ${idx}/${order.length}.`;
+}
+
+startGame();
+</script>
+</body>
+</html>

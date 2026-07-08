@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<title>Alongamento Contra o Relógio</title>
+<style>
+  :root{--azul:#0b3d78;--laranja:#f26522;--bg:#f2f4f8;}
+  *{box-sizing:border-box;font-family:'Segoe UI',Arial,sans-serif;}
+  body{margin:0;background:var(--bg);color:#1c2b3a;text-align:center;}
+  header{background:var(--azul);color:#fff;padding:18px 24px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;}
+  header h1{margin:0;font-size:1.4rem;text-align:left;}
+  .hud span{background:rgba(255,255,255,.15);padding:6px 14px;border-radius:20px;font-weight:bold;margin-left:10px;}
+  main{max-width:640px;margin:20px auto;padding:0 16px;}
+  .instructions{background:#fff;border-left:6px solid var(--laranja);padding:14px 18px;border-radius:8px;margin-bottom:16px;font-size:.95rem;text-align:left;}
+  .pad{display:grid;grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr;gap:14px;max-width:420px;margin:0 auto;}
+  .key{aspect-ratio:1/1;border-radius:18px;font-size:3rem;display:flex;align-items:center;justify-content:center;cursor:pointer;
+      box-shadow:0 4px 0 rgba(0,0,0,.15);user-select:none;transition:transform .08s,filter .15s;border:4px solid rgba(0,0,0,.1);}
+  .key:active{transform:translateY(3px);}
+  .key.lit{filter:brightness(1.6);transform:scale(1.05);}
+  #k1{background:#e0a800;} /* pescoço */
+  #k2{background:#2864c9;} /* punho */
+  #k3{background:#2e9e4a;} /* olhos */
+  #k4{background:#d64545;} /* ombro */
+  #status{margin-top:18px;font-weight:bold;font-size:1.1rem;min-height:28px;}
+  button{background:var(--laranja);color:#fff;border:none;padding:12px 26px;border-radius:30px;font-size:1rem;cursor:pointer;margin-top:16px;font-weight:bold;}
+  #overlay{position:fixed;inset:0;background:rgba(11,61,120,.92);color:#fff;display:none;align-items:center;justify-content:center;flex-direction:column;text-align:center;padding:20px;}
+</style>
+</head>
+<body>
+<header>
+  <h1>🧘 Alongamento Contra o Relógio</h1>
+  <div class="hud">
+    <span>⭐ Pontos: <span id="score">0</span></span>
+    <span>🔁 Sequência: <span id="level">1</span></span>
+  </div>
+</header>
+<main>
+  <div class="instructions">
+    Igual ao jogo da memória: observe a sequência de <b>alongamentos</b> que acendem e repita clicando na mesma ordem.
+    A cada rodada a sequência fica mais longa. 🟡 Pescoço · 🔵 Punho · 🟢 Olhos · 🔴 Ombro. Errou = fim de jogo!
+  </div>
+  <div class="pad">
+    <div class="key" id="k1">🙆</div>
+    <div class="key" id="k2">🤲</div>
+    <div class="key" id="k3">👀</div>
+    <div class="key" id="k4">💪</div>
+  </div>
+  <div id="status">Clique em "Começar" para iniciar a sequência!</div>
+  <button onclick="startGame()">Começar / Reiniciar</button>
+</main>
+
+<div id="overlay">
+  <h2 id="overTitle"></h2>
+  <p id="overText"></p>
+  <button onclick="startGame()">Jogar novamente</button>
+</div>
+
+<script>
+const keys = [document.getElementById('k1'),document.getElementById('k2'),document.getElementById('k3'),document.getElementById('k4')];
+const statusEl=document.getElementById('status'), scoreEl=document.getElementById('score'), levelEl=document.getElementById('level');
+let sequence=[], playerStep=0, score=0, accepting=false;
+
+function lightUp(i, dur=550){
+  return new Promise(res=>{
+    keys[i].classList.add('lit');
+    setTimeout(()=>{ keys[i].classList.remove('lit'); res(); }, dur);
+  });
+}
+
+async function playSequence(){
+  accepting=false;
+  statusEl.textContent='Observe a sequência...';
+  await new Promise(r=>setTimeout(r,500));
+  for(const i of sequence){
+    await lightUp(i);
+    await new Promise(r=>setTimeout(r,180));
+  }
+  playerStep=0;
+  accepting=true;
+  statusEl.textContent='Sua vez! Repita a sequência.';
+}
+
+function nextRound(){
+  sequence.push(Math.floor(Math.random()*4));
+  levelEl.textContent = sequence.length;
+  playSequence();
+}
+
+function startGame(){
+  document.getElementById('overlay').style.display='none';
+  sequence=[]; playerStep=0; score=0; scoreEl.textContent=score; levelEl.textContent=1;
+  nextRound();
+}
+
+keys.forEach((k,i)=>{
+  k.onclick=()=>{
+    if(!accepting) return;
+    k.classList.add('lit');
+    setTimeout(()=>k.classList.remove('lit'),200);
+    if(i===sequence[playerStep]){
+      playerStep++;
+      if(playerStep===sequence.length){
+        score += sequence.length*5;
+        scoreEl.textContent=score;
+        accepting=false;
+        statusEl.textContent='✅ Sequência correta! Preparando a próxima rodada...';
+        setTimeout(nextRound,900);
+      }
+    } else {
+      accepting=false;
+      endGame();
+    }
+  };
+});
+
+function endGame(){
+  document.getElementById('overlay').style.display='flex';
+  document.getElementById('overTitle').textContent='😅 Sequência quebrada!';
+  document.getElementById('overText').textContent=`Você chegou até a rodada ${sequence.length} e fez ${score} pontos. Lembre-se: pausas curtas e frequentes previnem lesões!`;
+}
+</script>
+</body>
+</html>
